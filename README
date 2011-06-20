@@ -1,0 +1,13 @@
+A simple anagram solver in Go
+
+Roberto Teixeira <robteix@robteix.com>
+
+Usage: anagramizer [flags] [word], flags can be:
+  -c=0: Maximum number of results (or 0 for no limit)
+  -f="wordlist.txt": Wordlist file to use
+  -max=0           : Maximum word size (0 for no limit)
+  -min=1           : Minimum word size
+  -q=false         : Don't show any message except for the solutions
+  -r=false         : If true, -s will sort from larger to smaller size
+  -s=false         : Sort results by word size
+  -sub=false       : If true, allow sub-anagrams (not all letters required)
