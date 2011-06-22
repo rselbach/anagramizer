@@ -60,7 +60,7 @@ func TestAnagram(word, dictword string, ch chan string) {
 	if len(dictword) > *maxSize && *maxSize > 0 {
 		return
 	}
-	for _, char := range dictword {
+	for _, char := range strings.ToLower(dictword) {
 		if strings.Contains(word, string(char)) {
 			word = strings.Replace(word, string(char), "", 1)
 		} else {
@@ -87,7 +87,7 @@ func main() {
 		return
 	}
 
-	word := flag.Arg(0)
+	word := strings.ToLower(flag.Arg(0))
 
 	f, err := os.Open(*fileName)
 	if err != nil {
