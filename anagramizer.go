@@ -32,6 +32,7 @@ var quiet *bool = flag.Bool("q", false, "Don't show any message except for the s
 var count *int = flag.Int("c", 0, "Maximum number of results (or 0 for no limit)")
 var reverse *bool = flag.Bool("r", false, "If true, -s will sort from larger to smaller size")
 var subAnagrams *bool = flag.Bool("sub", false, "If true, allow sub-anagrams (not all letters required)")
+var delimiter *string = flag.String("d", "\n", "Word separator/delimiter.")
 
 // # of solutions
 var solutions uint = 0
@@ -64,7 +65,8 @@ func TestAnagram(word, dictword string, ch chan string) {
 func main() {
 
 	flag.Parse()
-	if flag.NArg() != 1 {
+
+	if flag.NArg() != 1 || len(*delimiter) != 1 {
 		fmt.Fprintf(os.Stderr, "Usage: %s [flags] [letters]\n", os.Args[0])
 		flag.PrintDefaults()
 		return
@@ -83,13 +85,21 @@ func main() {
 	if !*quiet {
 		s.Start("Identifying anagrams")
 	}
+	// convert string to byte
+	sep := (*delimiter)[0]
 	for {
-		line, _, err := r.ReadLine()
+		line, err := r.ReadSlice(sep)
 		if err == os.EOF {
 			break
 		}
 		if err != nil {
 			panic(err)
+		}
+		if line[len(line)-1] == sep {
+                        line = line[:len(line)-1]
+                }
+		if line[len(line)-1] == '\r' {
+			line = line[:len(line)-1]
 		}
 		go TestAnagram(word, string(line), ch)
 	}
