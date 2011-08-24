@@ -20,7 +20,10 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
+	"http"
+	"io"
 	"os"
+	"regexp"
 	"strings"
 )
 
@@ -36,6 +39,8 @@ var delimiter *string = flag.String("d", "\n", "Word separator/delimiter.")
 
 // # of solutions
 var solutions uint = 0
+
+var wordList *WordSorter
 
 func TestAnagram(word, dictword string, ch chan string) {
 	if len(dictword) < *minSize {
@@ -62,29 +67,99 @@ func TestAnagram(word, dictword string, ch chan string) {
 	}
 }
 
-func main() {
+func solutionsHandler(w http.ResponseWriter, r *http.Request) {
 
-	flag.Parse()
+	hint := r.FormValue("hint")
+        if hint == "" {
+                w.WriteHeader(http.StatusInternalServerError)
+                w.Header().Set("Content-Type", "text/plain;charset=UTF-8;")
+                io.WriteString(w, "Required parameter 'hint' not received.\n")
+                return
+        }
 
-	if flag.NArg() != 1 || len(*delimiter) != 1 {
-		fmt.Fprintf(os.Stderr, "Usage: %s [flags] [letters]\n", os.Args[0])
-		flag.PrintDefaults()
+	// Use a regexp to find all actual characters
+	// we already know about
+	realCharExp := regexp.MustCompile("[^*]")
+	realChars := realCharExp.FindAllString(hint, -1)
+
+	// Replace all '_' in the hint expression for
+	// 'any character that's not currently known'
+	newr_str := strings.Replace(hint, "*",
+		fmt.Sprintf("[^%s]", strings.Join(realChars, "")), -1)
+	finalExp := regexp.MustCompile(fmt.Sprintf("^%s$", newr_str))
+
+	io.WriteString(w, fmt.Sprintf(`<html>
+<head><title>Possible Solutions for %s</title></head>
+<body><h1>Possible Solutions for %s</h1><ul>`, hint, hint));
+	// Now go through the word list looking for matches
+	for i := range wordList.Words() {
+		if finalExp.MatchString(wordList.Word(i)) {
+			io.WriteString(w, fmt.Sprintf("<li>%s</li>", wordList.Word(i)))
+		}
+	}
+	io.WriteString(w, "</ul></body></html>");
+
+}
+
+func anagramHandler(w http.ResponseWriter, r *http.Request) {
+
+	word := r.FormValue("word")
+	if word == "" {
+		w.WriteHeader(http.StatusInternalServerError)
+                w.Header().Set("Content-Type", "text/plain;charset=UTF-8;")
+                io.WriteString(w, "Required parameter 'word' not received.\n")
 		return
 	}
 
-	word := strings.ToLower(flag.Arg(0))
+	ch := make(chan string, 100)
+	go func() {
+		for i := range wordList.Words() {
+			TestAnagram(word, wordList.Word(i), ch)
+		}
+		close(ch)
+	}()
+	ws := new(WordSorter)
+	//for i := uint(0); i < solutions; i++ {
+	//	ws.Append(<-ch)
+	//}
+
+	for w := range ch {
+		ws.Append(w)
+	}
+
+	if *sortResults {
+		if *reverse {
+			ws.SortReversed()
+		} else {
+			ws.Sort()
+		}
+	}
+	io.WriteString(w, fmt.Sprintf("<html><head><title>Anagrams for %s</title></head><body><h1>Anagrams for %s</h1><ul>", word, word));
+	for i := range ws.Words() {
+		if *count > 0 && i >= *count {
+			break
+		}
+		io.WriteString(w, fmt.Sprintf("<li>%s</li>", ws.Word(i)))
+	}
+	io.WriteString(w, "</ul></body></html>");
+
+}
+
+func main() {
+
+	flag.Parse()
 
 	f, err := os.Open(*fileName)
 	if err != nil {
 		panic(err)
 	}
 
-	ch := make(chan string)
 	r := bufio.NewReader(f)
 	s := new(Status)
 	if !*quiet {
 		s.Start("Identifying anagrams")
 	}
+	wordList = new(WordSorter)
 	// convert string to byte
 	sep := (*delimiter)[0]
 	for {
@@ -101,41 +176,13 @@ func main() {
 		if line[len(line)-1] == '\r' {
 			line = line[:len(line)-1]
 		}
-		go TestAnagram(word, string(line), ch)
+		wordList.Append(string(line))
 	}
 	f.Close()
 	if !*quiet {
 		s.Done()
 	}
-
-	if !*quiet {
-		s.Start("Compiling results")
-	}
-	ws := new(WordSorter)
-	for i := uint(0); i < solutions; i++ {
-		ws.Append(<-ch)
-	}
-	if !*quiet {
-		s.Done()
-	}
-	if *sortResults {
-		if !*quiet {
-			s.Start("Sorting results")
-		}
-		if *reverse {
-			ws.SortReversed()
-		} else {
-			ws.Sort()
-		}
-		if !*quiet {
-			s.Done()
-		}
-	}
-	for i := range ws.Words() {
-		if *count > 0 && i >= *count {
-			break
-		}
-		fmt.Printf("%s\n", ws.Word(i))
-	}
-
+	http.HandleFunc("/anagrams", anagramHandler)
+	http.HandleFunc("/solutions", solutionsHandler)
+	http.ListenAndServe(":8080", nil)
 }
